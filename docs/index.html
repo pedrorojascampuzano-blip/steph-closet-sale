@@ -298,6 +298,7 @@
 
 <div class="filters" id="cat-filters"></div>
 <div class="filters" id="size-filters"></div>
+<div class="filters" id="price-filters"></div>
 
 <div class="filter-row-2">
   <label class="toggle-hide">
@@ -337,10 +338,19 @@ const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?forma
 const SHEET_VIEW_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`;
 
 let DATA = [];
+const PRICE_RANGES = [
+  { key: 'r1', label: '≤ $50',     min: 0,   max: 50 },
+  { key: 'r2', label: '$51-100',   min: 51,  max: 100 },
+  { key: 'r3', label: '$101-150',  min: 101, max: 150 },
+  { key: 'r4', label: '$151-250',  min: 151, max: 250 },
+  { key: 'r5', label: '$251+',     min: 251, max: Infinity }
+];
+
 let state = {
   search: '',
   category: 'all',
   size: 'all',
+  priceRange: 'all',
   hideSold: false,
   sold: {},
   prices: {},
@@ -452,10 +462,14 @@ function getFinalPrice(item) {
 
 function getFilteredItems() {
   const q = state.search.trim().toLowerCase();
+  const range = state.priceRange !== 'all'
+    ? PRICE_RANGES.find(r => r.key === state.priceRange)
+    : null;
   return DATA.filter(item => {
     if (state.hideSold && state.sold[item.id]) return false;
     if (state.category !== 'all' && item._cat !== state.category) return false;
     if (state.size !== 'all' && item.talla !== state.size) return false;
+    if (range && (item.precio < range.min || item.precio > range.max)) return false;
     if (q) {
       const blob = (item.prenda + ' ' + item.marca + ' ' + item.talla).toLowerCase();
       if (!blob.includes(q)) return false;
@@ -502,6 +516,24 @@ function renderFilters() {
     p.innerHTML = `${size} <span class="count">${count}</span>`;
     p.onclick = () => { state.size = size; render(); };
     sizeEl.appendChild(p);
+  });
+
+  const priceEl = document.getElementById('price-filters');
+  priceEl.innerHTML = '';
+  const allPricePill = document.createElement('button');
+  allPricePill.className = 'pill' + (state.priceRange === 'all' ? ' active' : '');
+  allPricePill.textContent = 'Todos precios';
+  allPricePill.onclick = () => { state.priceRange = 'all'; render(); };
+  priceEl.appendChild(allPricePill);
+
+  PRICE_RANGES.forEach(r => {
+    const count = DATA.filter(i => i.precio >= r.min && i.precio <= r.max).length;
+    if (count === 0) return;
+    const p = document.createElement('button');
+    p.className = 'pill' + (state.priceRange === r.key ? ' active' : '');
+    p.innerHTML = `${r.label} <span class="count">${count}</span>`;
+    p.onclick = () => { state.priceRange = r.key; render(); };
+    priceEl.appendChild(p);
   });
 }
 
