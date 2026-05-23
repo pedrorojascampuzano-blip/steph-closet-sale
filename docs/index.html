@@ -431,7 +431,7 @@
 <div class="modal" id="modal-add">
   <div class="modal-card">
     <h2>Agregar prenda</h2>
-    <div class="modal-note">Solo se guarda en este dispositivo. Si quieres que aparezca para todos, agrégalo en el Google Sheet.</div>
+    <div class="modal-note">Se guarda en el Google Sheet automáticamente. Si no hay internet, queda en este dispositivo y se sincroniza después.</div>
     <label>Prenda <span class="req">*</span></label>
     <input id="add-prenda" type="text" placeholder="Vestido azul corto" autocomplete="off">
     <label>Marca</label>
@@ -452,6 +452,7 @@ const STORAGE_KEY = 'steph_closet_v2';
 const SHEET_ID = '1JE7iBPFmE7WJ1ObTprtaLBQxlWQqixdr-f_F_4vwh6A';
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&t=${Date.now()}`;
 const SHEET_VIEW_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`;
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyC3UAkzAB2ueuQSypsFddsXQ5EjvVdsfHpMCC9-PSifmrwxVuj5QSpRcZzrL_q7tVQqA/exec';
 
 let DATA = [];
 const PRICE_RANGES = [
@@ -515,10 +516,51 @@ function saveCustomItems() {
 }
 
 function rebuildData(baseItems) {
-  // Merge sheet items + custom items, marking customs and applying categorize()
+  // If a custom item now exists in the sheet (same stable id), drop the local copy
+  const sheetIds = new Set(baseItems.map(i => i.id));
+  state.customItems = state.customItems.filter(c => !sheetIds.has(c.id));
+  saveCustomItems();
   const customMapped = state.customItems.map(it => ({ ...it, _custom: true }));
   const all = [...baseItems, ...customMapped];
   DATA = all.map(item => ({ ...item, _cat: categorize(item.prenda) }));
+}
+
+async function syncItemToSheet(item) {
+  try {
+    const r = await fetch(SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'addItem',
+        prenda: item.prenda,
+        marca: item.marca || '',
+        talla: item.talla || '',
+        precio: item.precio
+      })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'unknown error');
+    return { ok: true };
+  } catch (e) {
+    console.warn('syncItemToSheet failed:', e);
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+function showToast(text, kind) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.style.cssText = 'position:fixed;top:env(safe-area-inset-top,12px);left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.2);transition:opacity 0.3s;max-width:90vw;text-align:center;';
+    document.body.appendChild(el);
+  }
+  el.style.background = kind === 'error' ? '#c62828' : (kind === 'ok' ? '#2e7d32' : '#1a1a2e');
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.style.opacity = '0'; }, 3000);
 }
 
 function saveState() {
@@ -878,7 +920,7 @@ modalAdd.addEventListener('click', (e) => {
   if (e.target === modalAdd) closeAddModal();
 });
 
-btnSubmitAdd.addEventListener('click', () => {
+btnSubmitAdd.addEventListener('click', async () => {
   const prenda = addPrendaEl.value.trim();
   const marca = addMarcaEl.value.trim();
   const talla = addTallaEl.value.trim();
@@ -889,11 +931,25 @@ btnSubmitAdd.addEventListener('click', () => {
   if (DATA.some(i => i.id === id)) {
     if (!confirm('Ya existe una prenda con los mismos datos. ¿Agregar igualmente?')) return;
   }
-  state.customItems.push({ id, prenda, marca, talla, precio });
+  const newItem = { id, prenda, marca, talla, precio };
+  // Optimistic local add (so card appears immediately + works offline)
+  state.customItems.push(newItem);
   saveCustomItems();
   rebuildData(BASE_ITEMS);
   closeAddModal();
   render();
+  showToast('Guardando en el Sheet...', 'info');
+  // Background sync to Apps Script
+  const res = await syncItemToSheet(newItem);
+  if (res.ok) {
+    showToast('✓ Guardado en el Sheet', 'ok');
+    // Refresh base from sheet so the synced item moves from custom to sheet
+    BASE_ITEMS = await loadData();
+    rebuildData(BASE_ITEMS);
+    render();
+  } else {
+    showToast('⚠ Solo guardado en este dispositivo (' + res.error + ')', 'error');
+  }
 });
 
 document.getElementById('btn-reset').addEventListener('click', () => {
