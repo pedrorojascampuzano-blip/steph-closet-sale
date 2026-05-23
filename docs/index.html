@@ -233,6 +233,102 @@
   }
   .lightbox-btn.danger { background: rgba(255,82,82,0.5); }
 
+  .badge-new {
+    display: inline-block;
+    background: #ff6b9d; color: #fff;
+    font-size: 10px; font-weight: 600;
+    padding: 2px 8px; border-radius: 10px;
+    margin-left: 6px; vertical-align: middle;
+    letter-spacing: 0.3px;
+  }
+  .btn-remove {
+    margin-top: 4px;
+    background: transparent; color: #c62828;
+    border: none;
+    font-size: 12px; cursor: pointer;
+    padding: 4px;
+    text-align: center;
+  }
+  .btn-remove:active { opacity: 0.6; }
+
+  .modal {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.5);
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .modal.open { display: flex; }
+  @media (min-width: 600px) { .modal { align-items: center; } }
+  .modal-card {
+    background: #fff;
+    width: 100%;
+    max-width: 480px;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 18px calc(20px + env(safe-area-inset-bottom, 0));
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
+  }
+  @media (min-width: 600px) {
+    .modal-card { border-radius: 16px; margin: 20px; }
+  }
+  .modal-card h2 {
+    font-size: 18px; font-weight: 600;
+    margin-bottom: 4px; color: #1a1a2e;
+  }
+  .modal-card .modal-note {
+    font-size: 12px; color: #888;
+    margin-bottom: 16px; line-height: 1.4;
+  }
+  .modal-card label {
+    display: block;
+    font-size: 12px; font-weight: 500;
+    color: #555;
+    margin-bottom: 4px; margin-top: 12px;
+  }
+  .modal-card label .req { color: #ff6b9d; }
+  .modal-card input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d4cfc1;
+    border-radius: 8px;
+    font-size: 16px;
+    color: #1a1a2e;
+    background: #fafaf7;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .modal-card input:focus {
+    border-color: #1a1a2e;
+    background: #fff;
+  }
+  .modal-actions {
+    display: flex; gap: 10px;
+    margin-top: 20px;
+  }
+  .modal-actions button {
+    flex: 1;
+    padding: 14px;
+    border: none; border-radius: 8px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-cancel {
+    background: #f5f3ef; color: #555;
+    border: 1px solid #e5e1d8 !important;
+  }
+  .btn-submit {
+    background: #1a1a2e; color: #fff;
+  }
+  .btn-submit:disabled {
+    background: #b8b0a0; cursor: not-allowed;
+  }
+  .bottom-bar .btn-add {
+    padding: 10px 14px;
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 8px;
+    background: transparent; color: #fff;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+
   .empty {
     grid-column: 1 / -1;
     padding: 40px 20px; text-align: center;
@@ -326,8 +422,28 @@
     <span class="counter" id="counter">0 de 0 prendas</span>
   </div>
   <div class="actions">
+    <button class="btn-add" id="btn-add">+ Agregar</button>
     <button class="btn-export" id="btn-export">Exportar</button>
     <button class="btn-reset" id="btn-reset">Reset</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-add">
+  <div class="modal-card">
+    <h2>Agregar prenda</h2>
+    <div class="modal-note">Solo se guarda en este dispositivo. Si querés que aparezca para todos, agrégalo en el Google Sheet.</div>
+    <label>Prenda <span class="req">*</span></label>
+    <input id="add-prenda" type="text" placeholder="Vestido azul corto" autocomplete="off">
+    <label>Marca</label>
+    <input id="add-marca" type="text" placeholder="Zara" autocomplete="off">
+    <label>Talla</label>
+    <input id="add-talla" type="text" placeholder="M" autocomplete="off">
+    <label>Precio <span class="req">*</span></label>
+    <input id="add-precio" type="number" inputmode="numeric" placeholder="150" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-cancel-add">Cancelar</button>
+      <button class="btn-submit" id="btn-submit-add" disabled>Agregar</button>
+    </div>
   </div>
 </div>
 
@@ -354,7 +470,8 @@ let state = {
   hideSold: false,
   sold: {},
   prices: {},
-  photos: {}
+  photos: {},
+  customItems: []
 };
 let currentPhotoId = null;
 
@@ -387,7 +504,21 @@ function loadState() {
     // Photos stored separately to keep state JSON small
     const rawPhotos = localStorage.getItem(STORAGE_KEY + '_photos');
     if (rawPhotos) state.photos = JSON.parse(rawPhotos) || {};
+    // Custom items added from the app
+    const rawCustom = localStorage.getItem(STORAGE_KEY + '_custom');
+    if (rawCustom) state.customItems = JSON.parse(rawCustom) || [];
   } catch(e) { console.warn('loadState', e); }
+}
+
+function saveCustomItems() {
+  localStorage.setItem(STORAGE_KEY + '_custom', JSON.stringify(state.customItems));
+}
+
+function rebuildData(baseItems) {
+  // Merge sheet items + custom items, marking customs and applying categorize()
+  const customMapped = state.customItems.map(it => ({ ...it, _custom: true }));
+  const all = [...baseItems, ...customMapped];
+  DATA = all.map(item => ({ ...item, _cat: categorize(item.prenda) }));
 }
 
 function saveState() {
@@ -557,7 +688,7 @@ function renderGrid() {
     const card = document.createElement('div');
     card.className = 'card' + (isSold ? ' sold' : '');
     card.innerHTML = `
-      <div class="prenda">${escapeHtml(item.prenda)}</div>
+      <div class="prenda">${escapeHtml(item.prenda)}${item._custom ? '<span class="badge-new">Nuevo</span>' : ''}</div>
       <div class="meta">
         ${item.marca ? `<span class="marca">${escapeHtml(item.marca)}</span>` : ''}
         ${item.talla ? `<span class="talla">${escapeHtml(item.talla)}</span>` : ''}
@@ -579,6 +710,7 @@ function renderGrid() {
       <button class="btn-sold" data-id="${item.id}">
         ${isSold ? '✓ Vendido · Toca para deshacer' : 'Marcar Vendido'}
       </button>
+      ${item._custom ? `<button class="btn-remove" data-remove-id="${item.id}">🗑 Quitar prenda</button>` : ''}
     `;
     grid.appendChild(card);
   });
@@ -620,6 +752,22 @@ function renderGrid() {
 
   grid.querySelectorAll('.photo-thumb').forEach(img => {
     img.onclick = (e) => openLightbox(e.currentTarget.dataset.photoId);
+  });
+
+  grid.querySelectorAll('.btn-remove').forEach(btn => {
+    btn.onclick = (e) => {
+      const id = e.currentTarget.dataset.removeId;
+      if (!confirm('¿Quitar esta prenda agregada manualmente?')) return;
+      state.customItems = state.customItems.filter(i => i.id !== id);
+      delete state.sold[id];
+      delete state.prices[id];
+      delete state.photos[id];
+      saveCustomItems();
+      saveState();
+      savePhotos();
+      rebuildData(BASE_ITEMS);
+      render();
+    };
   });
 }
 
@@ -690,6 +838,61 @@ document.getElementById('lb-retake').addEventListener('click', () => {
 document.getElementById('hide-sold').addEventListener('change', (e) => {
   state.hideSold = e.target.checked;
   saveState();
+  render();
+});
+
+// --- Add custom item modal ---
+const modalAdd = document.getElementById('modal-add');
+const addPrendaEl = document.getElementById('add-prenda');
+const addMarcaEl = document.getElementById('add-marca');
+const addTallaEl = document.getElementById('add-talla');
+const addPrecioEl = document.getElementById('add-precio');
+const btnSubmitAdd = document.getElementById('btn-submit-add');
+
+function refreshSubmitState() {
+  const ok = addPrendaEl.value.trim() && Number(addPrecioEl.value) > 0;
+  btnSubmitAdd.disabled = !ok;
+}
+
+[addPrendaEl, addMarcaEl, addTallaEl, addPrecioEl].forEach(el => {
+  el.addEventListener('input', refreshSubmitState);
+});
+
+function openAddModal() {
+  addPrendaEl.value = '';
+  addMarcaEl.value = '';
+  addTallaEl.value = '';
+  addPrecioEl.value = '';
+  refreshSubmitState();
+  modalAdd.classList.add('open');
+  setTimeout(() => addPrendaEl.focus(), 100);
+}
+
+function closeAddModal() {
+  modalAdd.classList.remove('open');
+}
+
+document.getElementById('btn-add').addEventListener('click', openAddModal);
+document.getElementById('btn-cancel-add').addEventListener('click', closeAddModal);
+modalAdd.addEventListener('click', (e) => {
+  if (e.target === modalAdd) closeAddModal();
+});
+
+btnSubmitAdd.addEventListener('click', () => {
+  const prenda = addPrendaEl.value.trim();
+  const marca = addMarcaEl.value.trim();
+  const talla = addTallaEl.value.trim();
+  const precio = Math.round(Number(addPrecioEl.value));
+  if (!prenda || !(precio > 0)) return;
+  const id = stableId(prenda, marca, talla);
+  // Prevent dup if same key already exists (sheet OR custom)
+  if (DATA.some(i => i.id === id)) {
+    if (!confirm('Ya existe una prenda con los mismos datos. ¿Agregar igualmente?')) return;
+  }
+  state.customItems.push({ id, prenda, marca, talla, precio });
+  saveCustomItems();
+  rebuildData(BASE_ITEMS);
+  closeAddModal();
   render();
 });
 
@@ -806,16 +1009,18 @@ async function loadData() {
   }
 }
 
+let BASE_ITEMS = [];
+
 document.getElementById('btn-refresh').addEventListener('click', async () => {
-  const items = await loadData();
-  DATA = items.map(item => ({ ...item, _cat: categorize(item.prenda) }));
+  BASE_ITEMS = await loadData();
+  rebuildData(BASE_ITEMS);
   render();
 });
 
 (async () => {
-  const items = await loadData();
-  DATA = items.map(item => ({ ...item, _cat: categorize(item.prenda) }));
+  BASE_ITEMS = await loadData();
   loadState();
+  rebuildData(BASE_ITEMS);
   document.getElementById('hide-sold').checked = state.hideSold;
   render();
 })();
