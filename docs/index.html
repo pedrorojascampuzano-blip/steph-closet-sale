@@ -27,17 +27,34 @@
     display: flex; align-items: center; gap: 8px;
   }
   h1 .heart { color: #ff6b9d; }
+  .search-wrap {
+    position: relative; margin-top: 10px;
+  }
   .search {
-    margin-top: 10px;
     width: 100%;
-    padding: 10px 14px;
+    padding: 12px 40px 12px 42px;
     border: none; border-radius: 24px;
     background: rgba(255,255,255,0.12);
-    color: #fff; font-size: 15px;
+    color: #fff; font-size: 16px;
     outline: none;
+    -webkit-appearance: none;
   }
   .search::placeholder { color: rgba(255,255,255,0.55); }
-  .search:focus { background: rgba(255,255,255,0.2); }
+  .search:focus { background: rgba(255,255,255,0.22); }
+  .search-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    pointer-events: none; opacity: 0.6; font-size: 16px;
+  }
+  .search-clear {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    width: 24px; height: 24px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.25); color: #fff;
+    font-size: 14px; line-height: 1;
+    cursor: pointer; display: none;
+    align-items: center; justify-content: center;
+  }
+  .search-clear.visible { display: flex; }
 
   .filters {
     display: flex; gap: 8px;
@@ -161,6 +178,61 @@
   }
   .card .btn-sold:active { transform: scale(0.98); }
 
+  .photo-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 4px;
+  }
+  .photo-thumb {
+    width: 56px; height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #f5f3ef;
+    border: 1px solid #d4cfc1;
+    cursor: pointer;
+  }
+  .btn-photo {
+    flex: 1;
+    padding: 10px;
+    border: 1px dashed #b8b0a0;
+    border-radius: 8px;
+    background: #fafaf7;
+    color: #555; font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+  }
+  .btn-photo.has-photo {
+    border-style: solid; border-color: #d4cfc1;
+    background: #fff; color: #1a1a2e;
+    font-weight: 500;
+    padding: 8px 10px;
+  }
+  .btn-photo input { display: none; }
+
+  .lightbox {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.92);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 100%; max-height: 90vh;
+    border-radius: 8px;
+  }
+  .lightbox-actions {
+    position: absolute; top: env(safe-area-inset-top, 12px); right: 12px;
+    display: flex; gap: 8px;
+  }
+  .lightbox-btn {
+    padding: 10px 14px;
+    border: none; border-radius: 8px;
+    background: rgba(255,255,255,0.15); color: #fff;
+    font-size: 13px; cursor: pointer;
+    backdrop-filter: blur(8px);
+  }
+  .lightbox-btn.danger { background: rgba(255,82,82,0.5); }
+
   .empty {
     grid-column: 1 / -1;
     padding: 40px 20px; text-align: center;
@@ -217,7 +289,11 @@
     <button id="btn-refresh" style="padding:6px 12px;border:1px solid rgba(255,255,255,0.25);border-radius:8px;background:transparent;color:#fff;font-size:12px;cursor:pointer;">↻ Sync</button>
   </div>
   <div id="load-status" style="margin-top:6px;font-size:11px;color:rgba(255,255,255,0.7)">Cargando...</div>
-  <input class="search" id="search" placeholder="Buscar prenda, marca, talla..." autocomplete="off">
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input class="search" id="search" placeholder="Buscar prenda, marca, talla..." autocomplete="off" inputmode="search">
+    <button class="search-clear" id="search-clear" aria-label="Limpiar búsqueda">✕</button>
+  </div>
 </header>
 
 <div class="filters" id="cat-filters"></div>
@@ -232,6 +308,15 @@
 </div>
 
 <div class="grid" id="grid"></div>
+
+<div class="lightbox" id="lightbox">
+  <div class="lightbox-actions">
+    <button class="lightbox-btn" id="lb-retake">Retomar</button>
+    <button class="lightbox-btn danger" id="lb-delete">Borrar foto</button>
+    <button class="lightbox-btn" id="lb-close">✕ Cerrar</button>
+  </div>
+  <img id="lightbox-img" alt="">
+</div>
 
 <div class="bottom-bar">
   <div class="stats">
@@ -258,8 +343,10 @@ let state = {
   size: 'all',
   hideSold: false,
   sold: {},
-  prices: {}
+  prices: {},
+  photos: {}
 };
+let currentPhotoId = null;
 
 function categorize(prenda) {
   const p = (prenda || '').toLowerCase();
@@ -287,6 +374,9 @@ function loadState() {
       state.prices = saved.prices || {};
       state.hideSold = !!saved.hideSold;
     }
+    // Photos stored separately to keep state JSON small
+    const rawPhotos = localStorage.getItem(STORAGE_KEY + '_photos');
+    if (rawPhotos) state.photos = JSON.parse(rawPhotos) || {};
   } catch(e) { console.warn('loadState', e); }
 }
 
@@ -296,6 +386,61 @@ function saveState() {
     prices: state.prices,
     hideSold: state.hideSold
   }));
+}
+
+function savePhotos() {
+  try {
+    localStorage.setItem(STORAGE_KEY + '_photos', JSON.stringify(state.photos));
+  } catch(e) {
+    alert('Memoria del browser llena. Borra fotos de prendas ya vendidas tocando la foto y "Borrar foto".');
+    console.error('savePhotos', e);
+  }
+}
+
+function compressImage(file, maxW = 800, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhotoFile(itemId, file) {
+  if (!file) return;
+  try {
+    const dataUrl = await compressImage(file, 800, 0.75);
+    state.photos[itemId] = dataUrl;
+    savePhotos();
+    renderGrid();
+  } catch (e) {
+    alert('No pude procesar la foto: ' + e.message);
+  }
+}
+
+function openLightbox(itemId) {
+  currentPhotoId = itemId;
+  document.getElementById('lightbox-img').src = state.photos[itemId];
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  currentPhotoId = null;
 }
 
 function getFinalPrice(item) {
@@ -376,6 +521,7 @@ function renderGrid() {
   items.forEach(item => {
     const isSold = !!state.sold[item.id];
     const finalPrice = getFinalPrice(item);
+    const photo = state.photos[item.id];
     const card = document.createElement('div');
     card.className = 'card' + (isSold ? ' sold' : '');
     card.innerHTML = `
@@ -383,6 +529,13 @@ function renderGrid() {
       <div class="meta">
         ${item.marca ? `<span class="marca">${escapeHtml(item.marca)}</span>` : ''}
         ${item.talla ? `<span class="talla">${escapeHtml(item.talla)}</span>` : ''}
+      </div>
+      <div class="photo-row">
+        ${photo ? `<img class="photo-thumb" src="${photo}" data-photo-id="${item.id}" alt="">` : ''}
+        <label class="btn-photo ${photo ? 'has-photo' : ''}">
+          <span>${photo ? '📷 Cambiar foto' : '📷 Tomar foto'}</span>
+          <input type="file" accept="image/*" capture="environment" data-photo-input="${item.id}">
+        </label>
       </div>
       <div class="precio-row">
         <span class="precio-lista">$${item.precio}</span>
@@ -424,6 +577,18 @@ function renderGrid() {
       renderBottom();
     };
   });
+
+  grid.querySelectorAll('input[data-photo-input]').forEach(inp => {
+    inp.onchange = (e) => {
+      const id = e.currentTarget.dataset.photoInput;
+      const file = e.currentTarget.files && e.currentTarget.files[0];
+      if (file) handlePhotoFile(id, file);
+    };
+  });
+
+  grid.querySelectorAll('.photo-thumb').forEach(img => {
+    img.onclick = (e) => openLightbox(e.currentTarget.dataset.photoId);
+  });
 }
 
 function renderBottom() {
@@ -451,10 +616,43 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-document.getElementById('search').addEventListener('input', (e) => {
+const searchEl = document.getElementById('search');
+const searchClearEl = document.getElementById('search-clear');
+searchEl.addEventListener('input', (e) => {
   state.search = e.target.value;
+  searchClearEl.classList.toggle('visible', !!e.target.value);
   renderGrid();
   renderBottom();
+});
+searchClearEl.addEventListener('click', () => {
+  searchEl.value = '';
+  state.search = '';
+  searchClearEl.classList.remove('visible');
+  searchEl.focus();
+  renderGrid();
+  renderBottom();
+});
+
+document.getElementById('lb-close').addEventListener('click', closeLightbox);
+document.getElementById('lightbox').addEventListener('click', (e) => {
+  if (e.target.id === 'lightbox') closeLightbox();
+});
+document.getElementById('lb-delete').addEventListener('click', () => {
+  if (!currentPhotoId) return;
+  if (confirm('¿Borrar la foto de esta prenda?')) {
+    delete state.photos[currentPhotoId];
+    savePhotos();
+    closeLightbox();
+    renderGrid();
+  }
+});
+document.getElementById('lb-retake').addEventListener('click', () => {
+  if (!currentPhotoId) return;
+  const id = currentPhotoId;
+  closeLightbox();
+  // Trigger the file input for that card
+  const inp = document.querySelector(`input[data-photo-input="${id}"]`);
+  if (inp) inp.click();
 });
 
 document.getElementById('hide-sold').addEventListener('change', (e) => {
@@ -464,12 +662,12 @@ document.getElementById('hide-sold').addEventListener('change', (e) => {
 });
 
 document.getElementById('btn-reset').addEventListener('click', () => {
-  if (confirm('¿Resetear todo? Vas a perder todas las marcas de vendido y precios ajustados.')) {
-    state.sold = {};
-    state.prices = {};
-    saveState();
-    render();
-  }
+  const includePhotos = confirm('¿Resetear marcas de vendido y precios ajustados?\n\nOK = solo vendidos/precios (fotos se quedan)\nCancelar = no resetear nada');
+  if (!includePhotos) return;
+  state.sold = {};
+  state.prices = {};
+  saveState();
+  render();
 });
 
 document.getElementById('btn-export').addEventListener('click', () => {
