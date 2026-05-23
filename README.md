@@ -31,5 +31,18 @@ Persistencia: localStorage del browser. No hay backend.
 
 ## Deploy
 
-GitHub Pages desde el branch `main` carpeta `webapp/`.
+GitHub Pages desde el branch `main` carpeta `docs/`.
 URL: https://pedrorojascampuzano-blip.github.io/steph-closet-sale/
+
+## Virtual try-on + 3D piece
+
+Cualquier prenda con foto tiene 2 botones extra:
+
+- **👗 Probar en modelo** — escoge uno de 4 modelos preset (slim/medium/curvy/petite) o sube tu foto. Manda al endpoint del Apps Script, que llama a `yisol/IDM-VTON` (free HF Space). Devuelve un PNG con la prenda puesta. ~25s.
+- **✨ Ver en 3D** — convierte la foto de la prenda en un modelo 3D rotable (GLB). Renderizado con `tencent/Hunyuan3D-2`. ~10s.
+
+Ambos servicios usan **Hugging Face Spaces gratuitos** sin tarjeta. Rate limit interno en el Apps Script: 30 calls/día por acción.
+
+Si los HF Spaces están saturados o caídos, la webapp muestra error claro y la prenda sigue vendible sin esa feature.
+
+Modelos preset en `docs/models/` con attribution en `models/credits.txt` (Pexels, license libre).
