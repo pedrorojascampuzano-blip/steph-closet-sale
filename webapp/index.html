@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1a2e">
+<title>Closet Sale · Steph</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f3ef;
+    color: #1a1a2e;
+    padding-bottom: 120px;
+    overflow-x: hidden;
+  }
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: #1a1a2e; color: #fff;
+    padding: 12px 16px 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  h1 {
+    font-size: 18px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h1 .heart { color: #ff6b9d; }
+  .search {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    border: none; border-radius: 24px;
+    background: rgba(255,255,255,0.12);
+    color: #fff; font-size: 15px;
+    outline: none;
+  }
+  .search::placeholder { color: rgba(255,255,255,0.55); }
+  .search:focus { background: rgba(255,255,255,0.2); }
+
+  .filters {
+    display: flex; gap: 8px;
+    overflow-x: auto; padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e5e1d8;
+    scrollbar-width: none;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .pill {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border: 1px solid #d4cfc1;
+    border-radius: 20px;
+    background: #fff;
+    font-size: 13px; font-weight: 500;
+    color: #1a1a2e;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .pill.active {
+    background: #1a1a2e; color: #fff; border-color: #1a1a2e;
+  }
+  .pill .count { opacity: 0.6; margin-left: 4px; font-size: 11px; }
+
+  .filter-row-2 {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e5e1d8;
+  }
+  .toggle-hide {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: #555;
+    cursor: pointer; user-select: none;
+  }
+  .toggle-hide input { width: 18px; height: 18px; accent-color: #1a1a2e; }
+  .stats-mini {
+    font-size: 12px; color: #888;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 12px;
+  }
+  @media (min-width: 600px) {
+    .grid { grid-template-columns: 1fr 1fr; padding: 16px; }
+  }
+  @media (min-width: 900px) {
+    .grid { grid-template-columns: 1fr 1fr 1fr; max-width: 1100px; margin: 0 auto; }
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid #e5e1d8;
+    display: flex; flex-direction: column; gap: 6px;
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .card.sold {
+    opacity: 0.5;
+    background: #ecf5ec;
+  }
+  .card .prenda {
+    font-size: 15px; font-weight: 600;
+    line-height: 1.25;
+  }
+  .card .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 10px;
+    font-size: 12px; color: #666;
+  }
+  .card .marca { font-style: italic; }
+  .card .talla {
+    background: #f5f3ef;
+    padding: 2px 8px; border-radius: 4px;
+    font-weight: 500; color: #1a1a2e;
+  }
+  .card .precio-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 6px;
+  }
+  .card .precio-lista {
+    font-size: 13px; color: #888;
+    text-decoration: line-through;
+  }
+  .card.sold .precio-lista { text-decoration: none; }
+  .card .precio-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #d4cfc1;
+    border-radius: 8px;
+    font-size: 15px; font-weight: 600;
+    color: #1a1a2e;
+    background: #fafaf7;
+    text-align: right;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .card .precio-input:focus {
+    border-color: #1a1a2e;
+    background: #fff;
+  }
+  .card .precio-prefix {
+    font-size: 13px; color: #666;
+  }
+  .card .btn-sold {
+    margin-top: 8px;
+    padding: 12px;
+    border: none; border-radius: 8px;
+    background: #1a1a2e; color: #fff;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .card.sold .btn-sold {
+    background: #4caf50;
+  }
+  .card .btn-sold:active { transform: scale(0.98); }
+
+  .empty {
+    grid-column: 1 / -1;
+    padding: 40px 20px; text-align: center;
+    color: #888; font-size: 14px;
+  }
+
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: #1a1a2e; color: #fff;
+    padding: 14px 16px;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .bottom-bar .stats {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .bottom-bar .total {
+    font-size: 22px; font-weight: 700;
+    line-height: 1;
+  }
+  .bottom-bar .label {
+    font-size: 11px; color: rgba(255,255,255,0.7);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .bottom-bar .counter {
+    font-size: 13px; color: rgba(255,255,255,0.85);
+  }
+  .bottom-bar .actions {
+    display: flex; gap: 8px;
+  }
+  .bottom-bar .btn-reset {
+    padding: 10px 14px;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 8px;
+    background: transparent; color: #fff;
+    font-size: 12px; cursor: pointer;
+  }
+  .bottom-bar .btn-export {
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #ff6b9d; color: #fff;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="heart">♥</span> Closet Sale · Steph</h1>
+  <input class="search" id="search" placeholder="Buscar prenda, marca, talla..." autocomplete="off">
+</header>
+
+<div class="filters" id="cat-filters"></div>
+<div class="filters" id="size-filters"></div>
+
+<div class="filter-row-2">
+  <label class="toggle-hide">
+    <input type="checkbox" id="hide-sold">
+    <span>Ocultar vendidos</span>
+  </label>
+  <span class="stats-mini" id="stats-mini"></span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="bottom-bar">
+  <div class="stats">
+    <span class="label">Vendido</span>
+    <span class="total" id="total">$0</span>
+    <span class="counter" id="counter">0 de 0 prendas</span>
+  </div>
+  <div class="actions">
+    <button class="btn-export" id="btn-export">Exportar</button>
+    <button class="btn-reset" id="btn-reset">Reset</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'steph_closet_2026_05_24';
+
+let DATA = [];
+let state = {
+  search: '',
+  category: 'all',
+  size: 'all',
+  hideSold: false,
+  sold: {},
+  prices: {}
+};
+
+function categorize(prenda) {
+  const p = (prenda || '').toLowerCase();
+  if (p.includes('vestido')) return 'Vestidos';
+  if (p.includes('blusa') || p.includes('camisa')) return 'Blusas';
+  if (p.includes('jeans') || p.includes('pantalon') || p.includes('jegging')) return 'Jeans/Pantalones';
+  if (p.includes('short')) return 'Shorts';
+  if (p.includes('falda')) return 'Faldas';
+  if (p.includes('top') || p.includes('crop')) return 'Tops';
+  if (p.includes('leggings')) return 'Leggings';
+  if (p.includes('sudadera') || p.includes('sueter') || p.includes('chamarra')) return 'Abrigos';
+  if (p.includes('conjunto') || p.includes('jumpsuit') || p.includes('romper') || p.includes('traje')) return 'Conjuntos';
+  if (p.includes('body')) return 'Bodys';
+  if (p.includes('diadema') || p.includes('arete') || p.includes('collar') || p.includes('pulsera') || p.includes('bolsa') || p.includes('cinto')) return 'Accesorios';
+  if (p.includes('zapato') || p.includes('tacon') || p.includes('bota') || p.includes('tenis')) return 'Calzado';
+  return 'Otros';
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      state.sold = saved.sold || {};
+      state.prices = saved.prices || {};
+      state.hideSold = !!saved.hideSold;
+    }
+  } catch(e) { console.warn('loadState', e); }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    sold: state.sold,
+    prices: state.prices,
+    hideSold: state.hideSold
+  }));
+}
+
+function getFinalPrice(item) {
+  if (state.prices[item.id] !== undefined && state.prices[item.id] !== null && state.prices[item.id] !== '') {
+    return Number(state.prices[item.id]);
+  }
+  return item.precio;
+}
+
+function getFilteredItems() {
+  const q = state.search.trim().toLowerCase();
+  return DATA.filter(item => {
+    if (state.hideSold && state.sold[item.id]) return false;
+    if (state.category !== 'all' && item._cat !== state.category) return false;
+    if (state.size !== 'all' && item.talla !== state.size) return false;
+    if (q) {
+      const blob = (item.prenda + ' ' + item.marca + ' ' + item.talla).toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function renderFilters() {
+  const cats = {};
+  const sizes = {};
+  DATA.forEach(i => {
+    cats[i._cat] = (cats[i._cat] || 0) + 1;
+    if (i.talla) sizes[i.talla] = (sizes[i.talla] || 0) + 1;
+  });
+
+  const catEl = document.getElementById('cat-filters');
+  catEl.innerHTML = '';
+  const allCatPill = document.createElement('button');
+  allCatPill.className = 'pill' + (state.category === 'all' ? ' active' : '');
+  allCatPill.innerHTML = `Todo <span class="count">${DATA.length}</span>`;
+  allCatPill.onclick = () => { state.category = 'all'; render(); };
+  catEl.appendChild(allCatPill);
+
+  Object.entries(cats).sort((a,b) => b[1] - a[1]).forEach(([cat, count]) => {
+    const p = document.createElement('button');
+    p.className = 'pill' + (state.category === cat ? ' active' : '');
+    p.innerHTML = `${cat} <span class="count">${count}</span>`;
+    p.onclick = () => { state.category = cat; render(); };
+    catEl.appendChild(p);
+  });
+
+  const sizeEl = document.getElementById('size-filters');
+  sizeEl.innerHTML = '';
+  const allSizePill = document.createElement('button');
+  allSizePill.className = 'pill' + (state.size === 'all' ? ' active' : '');
+  allSizePill.textContent = 'Todas tallas';
+  allSizePill.onclick = () => { state.size = 'all'; render(); };
+  sizeEl.appendChild(allSizePill);
+
+  Object.entries(sizes).sort((a,b) => b[1] - a[1]).forEach(([size, count]) => {
+    const p = document.createElement('button');
+    p.className = 'pill' + (state.size === size ? ' active' : '');
+    p.innerHTML = `${size} <span class="count">${count}</span>`;
+    p.onclick = () => { state.size = size; render(); };
+    sizeEl.appendChild(p);
+  });
+}
+
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  const items = getFilteredItems();
+  grid.innerHTML = '';
+
+  if (items.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No hay prendas con esos filtros';
+    grid.appendChild(empty);
+    return;
+  }
+
+  items.forEach(item => {
+    const isSold = !!state.sold[item.id];
+    const finalPrice = getFinalPrice(item);
+    const card = document.createElement('div');
+    card.className = 'card' + (isSold ? ' sold' : '');
+    card.innerHTML = `
+      <div class="prenda">${escapeHtml(item.prenda)}</div>
+      <div class="meta">
+        ${item.marca ? `<span class="marca">${escapeHtml(item.marca)}</span>` : ''}
+        ${item.talla ? `<span class="talla">${escapeHtml(item.talla)}</span>` : ''}
+      </div>
+      <div class="precio-row">
+        <span class="precio-lista">$${item.precio}</span>
+        <span class="precio-prefix">→ $</span>
+        <input class="precio-input" type="number" inputmode="numeric"
+               value="${state.prices[item.id] !== undefined ? state.prices[item.id] : item.precio}"
+               data-id="${item.id}" placeholder="${item.precio}">
+      </div>
+      <button class="btn-sold" data-id="${item.id}">
+        ${isSold ? '✓ Vendido · Toca para deshacer' : 'Marcar Vendido'}
+      </button>
+    `;
+    grid.appendChild(card);
+  });
+
+  grid.querySelectorAll('.btn-sold').forEach(btn => {
+    btn.onclick = (e) => {
+      const id = e.currentTarget.dataset.id;
+      if (state.sold[id]) {
+        delete state.sold[id];
+      } else {
+        state.sold[id] = Date.now();
+      }
+      saveState();
+      render();
+    };
+  });
+
+  grid.querySelectorAll('.precio-input').forEach(inp => {
+    inp.onchange = (e) => {
+      const id = e.currentTarget.dataset.id;
+      const v = e.currentTarget.value;
+      if (v === '' || isNaN(Number(v))) {
+        delete state.prices[id];
+      } else {
+        state.prices[id] = Number(v);
+      }
+      saveState();
+      renderBottom();
+    };
+  });
+}
+
+function renderBottom() {
+  const soldIds = Object.keys(state.sold);
+  const soldItems = DATA.filter(i => state.sold[i.id]);
+  const total = soldItems.reduce((sum, i) => sum + getFinalPrice(i), 0);
+
+  document.getElementById('total').textContent = '$' + total.toLocaleString('es-MX');
+  document.getElementById('counter').textContent = `${soldItems.length} de ${DATA.length} prendas`;
+  document.getElementById('stats-mini').textContent =
+    `${getFilteredItems().length} mostrando · ${soldItems.length} vendidos`;
+}
+
+function render() {
+  renderFilters();
+  renderGrid();
+  renderBottom();
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+document.getElementById('search').addEventListener('input', (e) => {
+  state.search = e.target.value;
+  renderGrid();
+  renderBottom();
+});
+
+document.getElementById('hide-sold').addEventListener('change', (e) => {
+  state.hideSold = e.target.checked;
+  saveState();
+  render();
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (confirm('¿Resetear todo? Vas a perder todas las marcas de vendido y precios ajustados.')) {
+    state.sold = {};
+    state.prices = {};
+    saveState();
+    render();
+  }
+});
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  const soldItems = DATA.filter(i => state.sold[i.id]).map(i => ({
+    prenda: i.prenda,
+    marca: i.marca,
+    talla: i.talla,
+    precio_lista: i.precio,
+    precio_final: getFinalPrice(i)
+  }));
+  const total = soldItems.reduce((s, i) => s + i.precio_final, 0);
+  let txt = `CLOSET SALE · ${new Date().toLocaleDateString('es-MX')}\n`;
+  txt += `Total vendido: $${total.toLocaleString('es-MX')}\n`;
+  txt += `Prendas: ${soldItems.length}\n\n`;
+  soldItems.forEach((i, idx) => {
+    txt += `${idx+1}. ${i.prenda}${i.marca ? ' · ' + i.marca : ''}${i.talla ? ' · T:' + i.talla : ''} · $${i.precio_final}\n`;
+  });
+  navigator.clipboard.writeText(txt).then(() => {
+    alert('Copiado al portapapeles ✓');
+  }).catch(() => {
+    prompt('Copia esto:', txt);
+  });
+});
+
+fetch('data.json')
+  .then(r => r.json())
+  .then(data => {
+    DATA = data.map(item => ({ ...item, _cat: categorize(item.prenda) }));
+    loadState();
+    document.getElementById('hide-sold').checked = state.hideSold;
+    render();
+  });
+</script>
+</body>
+</html>
