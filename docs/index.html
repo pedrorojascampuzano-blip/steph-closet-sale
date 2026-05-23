@@ -212,7 +212,11 @@
 <body>
 
 <header>
-  <h1><span class="heart">♥</span> Closet Sale · Steph</h1>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <h1><span class="heart">♥</span> Closet Sale · Steph</h1>
+    <button id="btn-refresh" style="padding:6px 12px;border:1px solid rgba(255,255,255,0.25);border-radius:8px;background:transparent;color:#fff;font-size:12px;cursor:pointer;">↻ Sync</button>
+  </div>
+  <div id="load-status" style="margin-top:6px;font-size:11px;color:rgba(255,255,255,0.7)">Cargando...</div>
   <input class="search" id="search" placeholder="Buscar prenda, marca, talla..." autocomplete="off">
 </header>
 
@@ -242,7 +246,10 @@
 </div>
 
 <script>
-const STORAGE_KEY = 'steph_closet_2026_05_24';
+const STORAGE_KEY = 'steph_closet_v2';
+const SHEET_ID = '1JE7iBPFmE7WJ1ObTprtaLBQxlWQqixdr-f_F_4vwh6A';
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&t=${Date.now()}`;
+const SHEET_VIEW_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`;
 
 let DATA = [];
 let state = {
@@ -487,14 +494,101 @@ document.getElementById('btn-export').addEventListener('click', () => {
   });
 });
 
-fetch('data.json')
-  .then(r => r.json())
-  .then(data => {
-    DATA = data.map(item => ({ ...item, _cat: categorize(item.prenda) }));
-    loadState();
-    document.getElementById('hide-sold').checked = state.hideSold;
-    render();
-  });
+// CSV parser (simple, handles quoted fields with commas)
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cell = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], n = text[i+1];
+    if (inQuotes) {
+      if (c === '"' && n === '"') { cell += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { cell += c; }
+    } else {
+      if (c === '"') { inQuotes = true; }
+      else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (cell !== '' || row.length > 0) { row.push(cell); rows.push(row); row = []; cell = ''; }
+        if (c === '\r' && n === '\n') i++;
+      } else { cell += c; }
+    }
+  }
+  if (cell !== '' || row.length > 0) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+// Stable id from prenda+marca+talla (so reordering sheet doesn't break localStorage)
+function stableId(prenda, marca, talla) {
+  const s = `${prenda}|${marca}|${talla}`.toLowerCase().replace(/\s+/g, '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return 'i_' + Math.abs(h).toString(36);
+}
+
+function parsePrice(v) {
+  if (!v) return 0;
+  // Handle "$250.00", "250", "$ 250.00", etc.
+  const m = String(v).replace(/[^\d.-]/g, '');
+  const n = parseFloat(m);
+  return isNaN(n) ? 0 : Math.round(n);
+}
+
+function rowsToItems(rows) {
+  if (!rows || rows.length < 2) return [];
+  const header = rows[0].map(h => h.trim().toUpperCase());
+  const idxPrenda = header.indexOf('PRENDA');
+  const idxMarca = header.indexOf('MARCA');
+  const idxTalla = header.indexOf('TALLA');
+  const idxPrecio = header.indexOf('PRECIO');
+  const items = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const prenda = (row[idxPrenda] || '').trim();
+    if (!prenda) continue;
+    const marca = idxMarca >= 0 ? (row[idxMarca] || '').trim().replace(/^-$/, '') : '';
+    const talla = idxTalla >= 0 ? (row[idxTalla] || '').trim() : '';
+    const precio = idxPrecio >= 0 ? parsePrice(row[idxPrecio]) : 0;
+    if (precio === 0) continue; // skip summary row
+    items.push({
+      id: stableId(prenda, marca, talla),
+      prenda, marca, talla, precio
+    });
+  }
+  return items;
+}
+
+async function loadData() {
+  const status = document.getElementById('load-status');
+  status.textContent = 'Cargando lista del Sheet...';
+  try {
+    const r = await fetch(CSV_URL, { cache: 'no-store' });
+    if (!r.ok) throw new Error('CSV HTTP ' + r.status);
+    const txt = await r.text();
+    const items = rowsToItems(parseCSV(txt));
+    if (items.length === 0) throw new Error('CSV vacío');
+    status.innerHTML = `<span style="color:#4caf50">✓ ${items.length} prendas del Sheet</span> · <a href="${SHEET_VIEW_URL}" target="_blank" style="color:#fff;text-decoration:underline">Editar</a>`;
+    return items;
+  } catch (e) {
+    console.warn('Sheet fetch failed, fallback to data.json:', e);
+    status.innerHTML = `<span style="color:#ffb74d">⚠ Sin internet, usando lista offline</span>`;
+    const r = await fetch('data.json');
+    return await r.json();
+  }
+}
+
+document.getElementById('btn-refresh').addEventListener('click', async () => {
+  const items = await loadData();
+  DATA = items.map(item => ({ ...item, _cat: categorize(item.prenda) }));
+  render();
+});
+
+(async () => {
+  const items = await loadData();
+  DATA = items.map(item => ({ ...item, _cat: categorize(item.prenda) }));
+  loadState();
+  document.getElementById('hide-sold').checked = state.hideSold;
+  render();
+})();
 </script>
 </body>
 </html>
