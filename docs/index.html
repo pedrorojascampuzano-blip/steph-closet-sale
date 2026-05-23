@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a1a2e">
 <title>Closet Sale · Steph</title>
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
@@ -329,6 +330,92 @@
     cursor: pointer;
   }
 
+  .ai-actions {
+    display: flex; gap: 6px;
+    margin-top: 6px;
+  }
+  .ai-actions button {
+    flex: 1;
+    padding: 8px 6px;
+    border: 1px solid #d4cfc1;
+    border-radius: 6px;
+    background: #fff;
+    color: #1a1a2e;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .ai-actions button:disabled {
+    opacity: 0.5;
+    background: #f5f3ef;
+  }
+  .ai-actions button:active { transform: scale(0.97); }
+
+  .models-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .model-thumb {
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    aspect-ratio: 3/4;
+    background: #f5f3ef;
+  }
+  .model-thumb.selected { border-color: #ff6b9d; }
+  .model-thumb img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .model-thumb .model-label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(0,0,0,0.5); color: #fff;
+    font-size: 11px; padding: 4px 6px;
+    text-align: center;
+  }
+
+  .ai-result {
+    margin-top: 14px;
+    min-height: 200px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f3ef;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ai-result img,
+  .ai-result video {
+    max-width: 100%; max-height: 70vh;
+    display: block;
+  }
+  .ai-result model-viewer {
+    width: 100%; height: 50vh;
+    background: #f5f3ef;
+  }
+  .ai-loader {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 12px;
+    color: #555; font-size: 13px;
+    padding: 30px;
+    text-align: center;
+  }
+  .ai-loader .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #e5e1d8;
+    border-top-color: #1a1a2e;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-error {
+    color: #c62828; font-size: 13px;
+    padding: 20px; text-align: center;
+    line-height: 1.4;
+  }
+
   .empty {
     grid-column: 1 / -1;
     padding: 40px 20px; text-align: center;
@@ -428,6 +515,41 @@
   </div>
 </div>
 
+<div class="modal" id="modal-tryon">
+  <div class="modal-card">
+    <h2>Probar en modelo</h2>
+    <div class="modal-note">Elige un modelo o usa tu foto. El resultado tarda unos 30-60 segundos.</div>
+    <div class="models-grid" id="models-grid"></div>
+    <label style="margin-top:14px;display:block;">O usa tu foto:</label>
+    <label class="btn-photo" style="margin-top:6px;">
+      <span id="own-photo-label">📷 Tomar foto mía</span>
+      <input type="file" accept="image/*" capture="user" id="own-photo-input">
+    </label>
+    <div class="ai-result" id="tryon-result" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-cancel-tryon">Cerrar</button>
+      <button class="btn-submit" id="btn-submit-tryon" disabled>Generar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-3d">
+  <div class="modal-card">
+    <h2>Ver en 3D</h2>
+    <div class="modal-note">Convertimos la foto de la prenda en un modelo 3D que se puede rotar.</div>
+    <div class="ai-result" id="result-3d">
+      <div class="ai-loader" id="loader-3d" style="display:none;">
+        <div class="spinner"></div>
+        <div id="loader-3d-text">Generando modelo 3D...</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-cancel-3d">Cerrar</button>
+      <button class="btn-submit" id="btn-regen-3d">Regenerar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="modal-add">
   <div class="modal-card">
     <h2>Agregar prenda</h2>
@@ -463,6 +585,13 @@ const PRICE_RANGES = [
   { key: 'r5', label: '$251+',     min: 251, max: Infinity }
 ];
 
+const MODELS_PRESET = [
+  { key: 'm1', file: 'models/model-1-slim.jpg', label: 'Slim' },
+  { key: 'm2', file: 'models/model-2-medium.jpg', label: 'Medium' },
+  { key: 'm3', file: 'models/model-3-curvy.jpg', label: 'Curvy' },
+  { key: 'm4', file: 'models/model-4-petite.jpg', label: 'Petite' }
+];
+
 let state = {
   search: '',
   category: 'all',
@@ -472,9 +601,15 @@ let state = {
   sold: {},
   prices: {},
   photos: {},
-  customItems: []
+  customItems: [],
+  tryons: {},
+  renders3d: {}
 };
 let currentPhotoId = null;
+let currentTryonId = null;
+let currentTryonModel = null;
+let currentOwnPhoto = null;
+let current3dId = null;
 
 function categorize(prenda) {
   const p = (prenda || '').toLowerCase();
@@ -508,7 +643,20 @@ function loadState() {
     // Custom items added from the app
     const rawCustom = localStorage.getItem(STORAGE_KEY + '_custom');
     if (rawCustom) state.customItems = JSON.parse(rawCustom) || [];
+    // AI results (try-on + 3D) stored separately to keep state small
+    const rawTryons = localStorage.getItem(STORAGE_KEY + '_tryons');
+    if (rawTryons) state.tryons = JSON.parse(rawTryons) || {};
+    // renders3d kept in-memory only (GLBs are 13MB+, won't fit in localStorage)
   } catch(e) { console.warn('loadState', e); }
+}
+
+function saveTryons() {
+  try { localStorage.setItem(STORAGE_KEY + '_tryons', JSON.stringify(state.tryons)); }
+  catch(e) { console.error('saveTryons', e); }
+}
+
+function save3d() {
+  // Intentionally no-op: GLB data URLs are too large for localStorage. In-memory only.
 }
 
 function saveCustomItems() {
@@ -752,6 +900,11 @@ function renderGrid() {
       <button class="btn-sold" data-id="${item.id}">
         ${isSold ? '✓ Vendido · Toca para deshacer' : 'Marcar Vendido'}
       </button>
+      ${photo ? `
+      <div class="ai-actions">
+        <button data-tryon-id="${item.id}">👗 Probar en modelo</button>
+        <button data-3d-id="${item.id}">✨ Ver en 3D</button>
+      </div>` : ''}
       ${item._custom ? `<button class="btn-remove" data-remove-id="${item.id}">🗑 Quitar prenda</button>` : ''}
     `;
     grid.appendChild(card);
@@ -810,6 +963,14 @@ function renderGrid() {
       rebuildData(BASE_ITEMS);
       render();
     };
+  });
+
+  grid.querySelectorAll('[data-tryon-id]').forEach(btn => {
+    btn.onclick = (e) => openTryonModal(e.currentTarget.dataset.tryonId);
+  });
+
+  grid.querySelectorAll('[data-3d-id]').forEach(btn => {
+    btn.onclick = (e) => open3dModal(e.currentTarget.dataset['3dId']);
   });
 }
 
@@ -1064,6 +1225,188 @@ async function loadData() {
     return await r.json();
   }
 }
+
+// --- Try-on modal ---
+const modalTryon = document.getElementById('modal-tryon');
+const tryonResult = document.getElementById('tryon-result');
+const btnSubmitTryon = document.getElementById('btn-submit-tryon');
+const modelsGrid = document.getElementById('models-grid');
+const ownPhotoInput = document.getElementById('own-photo-input');
+const ownPhotoLabel = document.getElementById('own-photo-label');
+
+function refreshTryonSubmit() {
+  btnSubmitTryon.disabled = !(currentTryonModel || currentOwnPhoto);
+}
+
+function renderModelsGrid() {
+  modelsGrid.innerHTML = '';
+  MODELS_PRESET.forEach(m => {
+    const d = document.createElement('div');
+    d.className = 'model-thumb' + (currentTryonModel === m.key ? ' selected' : '');
+    d.innerHTML = `<img src="${m.file}" alt="${m.label}" onerror="this.parentNode.style.display='none'"><span class="model-label">${m.label}</span>`;
+    d.onclick = () => {
+      currentTryonModel = m.key;
+      currentOwnPhoto = null;
+      ownPhotoLabel.textContent = '📷 Tomar foto mía';
+      renderModelsGrid();
+      refreshTryonSubmit();
+    };
+    modelsGrid.appendChild(d);
+  });
+}
+
+function openTryonModal(itemId) {
+  currentTryonId = itemId;
+  currentTryonModel = null;
+  currentOwnPhoto = null;
+  tryonResult.style.display = 'none';
+  tryonResult.innerHTML = '';
+  ownPhotoLabel.textContent = '📷 Tomar foto mía';
+  ownPhotoInput.value = '';
+  renderModelsGrid();
+  refreshTryonSubmit();
+  // If cached, show immediately
+  const cached = Object.keys(state.tryons).find(k => k.startsWith(itemId + ':'));
+  if (cached) {
+    tryonResult.style.display = 'flex';
+    tryonResult.innerHTML = `<img src="${state.tryons[cached]}" alt="Try-on">`;
+  }
+  modalTryon.classList.add('open');
+}
+
+function closeTryonModal() {
+  modalTryon.classList.remove('open');
+  currentTryonId = null;
+}
+
+document.getElementById('btn-cancel-tryon').addEventListener('click', closeTryonModal);
+modalTryon.addEventListener('click', (e) => { if (e.target === modalTryon) closeTryonModal(); });
+
+ownPhotoInput.addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const dataUrl = await compressImage(file, 800, 0.8);
+  currentOwnPhoto = dataUrl;
+  currentTryonModel = null;
+  ownPhotoLabel.textContent = '✓ Foto cargada · cambiar';
+  renderModelsGrid();
+  refreshTryonSubmit();
+});
+
+btnSubmitTryon.addEventListener('click', async () => {
+  if (!currentTryonId) return;
+  const garmentPhoto = state.photos[currentTryonId];
+  if (!garmentPhoto) {
+    alert('Esta prenda no tiene foto. Toma una foto primero.');
+    return;
+  }
+  const modelKey = currentOwnPhoto ? 'own' : currentTryonModel;
+  const cacheKey = currentTryonId + ':' + modelKey;
+  if (state.tryons[cacheKey]) {
+    tryonResult.style.display = 'flex';
+    tryonResult.innerHTML = `<img src="${state.tryons[cacheKey]}" alt="Try-on">`;
+    return;
+  }
+  tryonResult.style.display = 'flex';
+  tryonResult.innerHTML = `<div class="ai-loader"><div class="spinner"></div><div>Generando try-on... ~30-60s</div></div>`;
+  btnSubmitTryon.disabled = true;
+  try {
+    const modelImage = currentOwnPhoto || await urlToBase64(MODELS_PRESET.find(m => m.key === currentTryonModel).file);
+    const r = await fetch(SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'tryOn', garment: garmentPhoto, person: modelImage })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'unknown');
+    state.tryons[cacheKey] = data.resultUrl;
+    saveTryons();
+    tryonResult.innerHTML = `<img src="${data.resultUrl}" alt="Try-on result">`;
+  } catch (err) {
+    tryonResult.innerHTML = `<div class="ai-error">No pude generar el try-on.<br>${escapeHtml(String(err.message || err))}<br><br>El servicio gratuito puede estar caído. Intenta de nuevo en un rato.</div>`;
+  } finally {
+    btnSubmitTryon.disabled = false;
+  }
+});
+
+async function urlToBase64(url) {
+  const r = await fetch(url);
+  const blob = await r.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// --- 3D modal ---
+const modal3d = document.getElementById('modal-3d');
+const result3d = document.getElementById('result-3d');
+const loader3d = document.getElementById('loader-3d');
+const loader3dText = document.getElementById('loader-3d-text');
+
+function open3dModal(itemId) {
+  current3dId = itemId;
+  modal3d.classList.add('open');
+  const cached = state.renders3d[itemId];
+  if (cached) {
+    renderResult3d(cached);
+  } else {
+    generate3d(itemId);
+  }
+}
+
+function closeModal3d() {
+  modal3d.classList.remove('open');
+  current3dId = null;
+  result3d.innerHTML = '<div class="ai-loader" id="loader-3d" style="display:none;"><div class="spinner"></div><div id="loader-3d-text">Generando modelo 3D...</div></div>';
+}
+
+function renderResult3d(url) {
+  const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+  if (ext === 'glb' || ext === 'gltf') {
+    result3d.innerHTML = `<model-viewer src="${url}" auto-rotate camera-controls touch-action="pan-y" style="width:100%;height:60vh;background:#f5f3ef;"></model-viewer>`;
+  } else if (ext === 'mp4' || ext === 'webm') {
+    result3d.innerHTML = `<video src="${url}" autoplay loop muted playsinline style="max-width:100%;max-height:70vh;"></video>`;
+  } else {
+    result3d.innerHTML = `<img src="${url}" alt="3D render">`;
+  }
+}
+
+async function generate3d(itemId) {
+  const garmentPhoto = state.photos[itemId];
+  if (!garmentPhoto) {
+    result3d.innerHTML = `<div class="ai-error">Esta prenda no tiene foto.</div>`;
+    return;
+  }
+  result3d.innerHTML = `<div class="ai-loader"><div class="spinner"></div><div>Generando modelo 3D... ~30-60s</div></div>`;
+  try {
+    const r = await fetch(SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: '_3d', garment: garmentPhoto })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'unknown');
+    state.renders3d[itemId] = data.resultUrl;
+    save3d();
+    renderResult3d(data.resultUrl);
+  } catch (err) {
+    result3d.innerHTML = `<div class="ai-error">No pude generar el 3D.<br>${escapeHtml(String(err.message || err))}<br><br>El servicio gratuito puede estar caído. Intenta de nuevo en un rato.</div>`;
+  }
+}
+
+document.getElementById('btn-cancel-3d').addEventListener('click', closeModal3d);
+modal3d.addEventListener('click', (e) => { if (e.target === modal3d) closeModal3d(); });
+document.getElementById('btn-regen-3d').addEventListener('click', () => {
+  if (!current3dId) return;
+  delete state.renders3d[current3dId];
+  save3d();
+  generate3d(current3dId);
+});
 
 let BASE_ITEMS = [];
 

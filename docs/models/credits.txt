@@ -1,0 +1,28 @@
+Image credits for preset try-on models
+Source: Pexels (license: free use, no attribution required, but attribution kept here as good practice)
+License terms: https://www.pexels.com/license/
+
+------------------------------------------------------------
+model-1-slim.jpg
+  Author : Waldir Évora
+  Source : https://www.pexels.com/photo/model-on-white-background-19317139/
+  Direct : https://images.pexels.com/photos/19317139/pexels-photo-19317139.jpeg
+  Notes  : Slim/athletic body, full-body, black turtleneck + white sweatpants, white studio background.
+
+model-2-medium.jpg
+  Author : MART PRODUCTION
+  Source : https://www.pexels.com/photo/woman-in-white-long-sleeve-shirt-9558587/
+  Direct : https://images.pexels.com/photos/9558587/pexels-photo-9558587.jpeg
+  Notes  : Medium/average body, upper-body, plain white sweatshirt, neutral grey studio background.
+
+model-3-curvy.jpg
+  Author : Polina Tankilevitch
+  Source : https://www.pexels.com/photo/a-woman-in-gray-crop-top-fixing-her-hair-4519499/
+  Direct : https://images.pexels.com/photos/4519499/pexels-photo-4519499.jpeg
+  Notes  : Curvy / plus-size body, upper-body, grey crop top, soft yellow studio background.
+
+model-4-petite.jpg
+  Author : Darina Belonogova
+  Source : https://www.pexels.com/photo/a-woman-sitting-on-the-floor-8385354/
+  Direct : https://images.pexels.com/photos/8385354/pexels-photo-8385354.jpeg
+  Notes  : Petite / slim build, side profile sitting, black tee + dark jeans, white studio background.
