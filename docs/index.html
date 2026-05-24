@@ -628,7 +628,91 @@ function categorize(prenda) {
   return 'Otros';
 }
 
-function loadState() {
+// --- IndexedDB layer for big blobs (photos + tryons) ---
+// localStorage tops out at 5-10MB on mobile Safari; IDB gives 50MB-1GB+
+const IDB_NAME = 'stephCloset';
+const IDB_VERSION = 1;
+let _idbPromise = null;
+
+function openDB() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos');
+      if (!db.objectStoreNames.contains('tryons')) db.createObjectStore('tryons');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _idbPromise;
+}
+
+async function idbSet(store, key, value) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDelete(store, key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbList(store) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const s = tx.objectStore(store);
+    const result = {};
+    const keysReq = s.getAllKeys();
+    const valsReq = s.getAll();
+    let done = 0;
+    const finish = () => {
+      if (++done === 2) {
+        const keys = keysReq.result || [];
+        const vals = valsReq.result || [];
+        for (let i = 0; i < keys.length; i++) result[keys[i]] = vals[i];
+        resolve(result);
+      }
+    };
+    keysReq.onsuccess = finish;
+    valsReq.onsuccess = finish;
+    keysReq.onerror = valsReq.onerror = () => reject(keysReq.error || valsReq.error);
+  });
+}
+
+// One-shot migration: any photos/tryons in localStorage get moved to IDB and removed from LS
+async function migrateLocalStorageToIDB() {
+  try {
+    const oldPhotos = localStorage.getItem(STORAGE_KEY + '_photos');
+    if (oldPhotos) {
+      const parsed = JSON.parse(oldPhotos);
+      for (const k in parsed) await idbSet('photos', k, parsed[k]);
+      localStorage.removeItem(STORAGE_KEY + '_photos');
+      console.log('Migrated', Object.keys(parsed).length, 'photos from localStorage to IndexedDB');
+    }
+    const oldTryons = localStorage.getItem(STORAGE_KEY + '_tryons');
+    if (oldTryons) {
+      const parsed = JSON.parse(oldTryons);
+      for (const k in parsed) await idbSet('tryons', k, parsed[k]);
+      localStorage.removeItem(STORAGE_KEY + '_tryons');
+      console.log('Migrated', Object.keys(parsed).length, 'tryons from localStorage to IndexedDB');
+    }
+  } catch (e) { console.warn('Migration error', e); }
+}
+
+async function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -637,22 +721,23 @@ function loadState() {
       state.prices = saved.prices || {};
       state.hideSold = !!saved.hideSold;
     }
-    // Photos stored separately to keep state JSON small
-    const rawPhotos = localStorage.getItem(STORAGE_KEY + '_photos');
-    if (rawPhotos) state.photos = JSON.parse(rawPhotos) || {};
-    // Custom items added from the app
     const rawCustom = localStorage.getItem(STORAGE_KEY + '_custom');
     if (rawCustom) state.customItems = JSON.parse(rawCustom) || [];
-    // AI results (try-on + 3D) stored separately to keep state small
-    const rawTryons = localStorage.getItem(STORAGE_KEY + '_tryons');
-    if (rawTryons) state.tryons = JSON.parse(rawTryons) || {};
-    // renders3d kept in-memory only (GLBs are 13MB+, won't fit in localStorage)
+    // Migrate old photos/tryons from localStorage to IDB (one-shot, safe to re-run)
+    await migrateLocalStorageToIDB();
+    // Load photos and tryons from IndexedDB
+    state.photos = await idbList('photos');
+    state.tryons = await idbList('tryons');
+    // renders3d kept in-memory only (GLBs are 13MB+, won't fit anywhere persistent without bloat)
   } catch(e) { console.warn('loadState', e); }
 }
 
-function saveTryons() {
-  try { localStorage.setItem(STORAGE_KEY + '_tryons', JSON.stringify(state.tryons)); }
-  catch(e) { console.error('saveTryons', e); }
+async function saveTryons(key, value) {
+  // Per-key write: cheap. Old signature saveTryons() (no args) is a no-op now.
+  if (key !== undefined && value !== undefined) {
+    try { await idbSet('tryons', key, value); }
+    catch (e) { console.warn('saveTryons', e); }
+  }
 }
 
 function save3d() {
@@ -719,16 +804,17 @@ function saveState() {
   }));
 }
 
-function savePhotos() {
-  try {
-    localStorage.setItem(STORAGE_KEY + '_photos', JSON.stringify(state.photos));
-  } catch(e) {
-    alert('Memoria del browser llena. Borra fotos de prendas ya vendidas tocando la foto y "Borrar foto".');
-    console.error('savePhotos', e);
-  }
+async function savePhoto(id, dataUrl) {
+  try { await idbSet('photos', id, dataUrl); }
+  catch (e) { console.warn('savePhoto', e); }
 }
 
-function compressImage(file, maxW = 800, quality = 0.75) {
+async function deletePhoto(id) {
+  try { await idbDelete('photos', id); }
+  catch (e) { console.warn('deletePhoto', e); }
+}
+
+function compressImage(file, maxW = 700, quality = 0.7) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -754,9 +840,9 @@ function compressImage(file, maxW = 800, quality = 0.75) {
 async function handlePhotoFile(itemId, file) {
   if (!file) return;
   try {
-    const dataUrl = await compressImage(file, 800, 0.75);
+    const dataUrl = await compressImage(file, 700, 0.7);
     state.photos[itemId] = dataUrl;
-    savePhotos();
+    await savePhoto(itemId, dataUrl);
     renderGrid();
   } catch (e) {
     alert('No pude procesar la foto: ' + e.message);
@@ -959,7 +1045,7 @@ function renderGrid() {
       delete state.photos[id];
       saveCustomItems();
       saveState();
-      savePhotos();
+      deletePhoto(id);
       rebuildData(BASE_ITEMS);
       render();
     };
@@ -1023,8 +1109,9 @@ document.getElementById('lightbox').addEventListener('click', (e) => {
 document.getElementById('lb-delete').addEventListener('click', () => {
   if (!currentPhotoId) return;
   if (confirm('¿Borrar la foto de esta prenda?')) {
-    delete state.photos[currentPhotoId];
-    savePhotos();
+    const id = currentPhotoId;
+    delete state.photos[id];
+    deletePhoto(id);
     closeLightbox();
     renderGrid();
   }
@@ -1321,7 +1408,7 @@ btnSubmitTryon.addEventListener('click', async () => {
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'unknown');
     state.tryons[cacheKey] = data.resultUrl;
-    saveTryons();
+    await saveTryons(cacheKey, data.resultUrl);
     tryonResult.innerHTML = `<img src="${data.resultUrl}" alt="Try-on result">`;
   } catch (err) {
     tryonResult.innerHTML = `<div class="ai-error">No pude generar el try-on.<br>${escapeHtml(String(err.message || err))}<br><br>El servicio gratuito puede estar caído. Intenta de nuevo en un rato.</div>`;
@@ -1418,7 +1505,7 @@ document.getElementById('btn-refresh').addEventListener('click', async () => {
 
 (async () => {
   BASE_ITEMS = await loadData();
-  loadState();
+  await loadState();
   rebuildData(BASE_ITEMS);
   document.getElementById('hide-sold').checked = state.hideSold;
   render();
